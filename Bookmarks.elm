@@ -92,6 +92,8 @@ type Action
   | ToggleUpdateBookmarkForm Int
   | EditUrl String
   | EditTitle String
+  | HideCreateForm
+  | HideUpdateForm
 
 
 update : Action -> Model -> Model
@@ -175,7 +177,13 @@ update action model =
     -}
 
     ToggleCreateBookmarkForm ->
-      { model | showCreateBookmark = not model.showCreateBookmark }
+      { model | showCreateBookmark = True }
+
+    HideCreateForm ->
+      { model | showCreateBookmark = False }
+
+    HideUpdateForm ->
+      { model | showUpdateBookmark = False }
 
     ToggleUpdateBookmarkForm id ->
       let
@@ -189,7 +197,7 @@ update action model =
         case bookmarkBeingEdited of
           Just bookmark ->
             { model
-            | showUpdateBookmark = not model.showUpdateBookmark
+            | showUpdateBookmark = True
             , updateBookmarkURL = bookmark.url
             , updateBookmarkTitle = bookmark.title
             , bookmarkIdBeingEdited = Just id
@@ -210,8 +218,8 @@ update action model =
 -- VIEW
 
 
-sidebar : Address Action -> List Category -> Html
-sidebar address categories =
+sidebar : Address Action -> List Category -> Maybe String -> Html
+sidebar address categories currentCategory =
   div
     [ class "col-sm-3 col-md-2 sidebar" ]
     [ a
@@ -219,17 +227,22 @@ sidebar address categories =
         [ img [ class "logo", src "assets/img/eggly-logo.png" ] [] ]
     , ul
         [ class "nav nav-sidebar" ]
-        (List.map (\cat -> categoryRow address cat.name) categories)
+        (List.map (\cat -> categoryRow address cat.name currentCategory) categories)
     ]
 
 
-categoryRow : Address Action -> String -> Html
-categoryRow address categoryName =
-  li
-    []
-    [ a
-        [ onClick address (SelectCategory categoryName) ]
-        [ text categoryName ]
+categoryRow : Address Action -> String ->  Maybe String -> Html
+categoryRow address categoryName currentCategory =
+  let
+    currCat = Maybe.withDefault "" currentCategory
+    categoryActive =
+      categoryName == currCat
+  in
+    li
+      [ classList [("active",  categoryActive) ]]
+      [ a
+          [ onClick address (SelectCategory categoryName) ]
+          [ text categoryName ]
     ]
 
 
@@ -349,7 +362,7 @@ createBookmarkForm address model =
               ]
               [ text "Create" ]
           , button
-              [ class "btn btn-default btn-lg pull-right", type' "button" ]
+              [ class "btn btn-default btn-lg pull-right", type' "button" ,  onClick address HideCreateForm ]
               [ text "Cancel" ]
           ]
       ]
@@ -410,7 +423,7 @@ updateBookmarkForm address model =
               ]
               [ text "Update" ]
           , button
-              [ class "btn btn-default btn-lg pull-right", type' "button" ]
+              [ class "btn btn-default btn-lg pull-right", type' "button", onClick  address HideUpdateForm ]
               [ text "Cancel" ]
           ]
       ]
@@ -419,7 +432,7 @@ view : Address Action -> Model -> Html
 view address model =
   div
     [ class "row" ]
-    [ sidebar address model.categories
+    [ sidebar address model.categories model.currentCategory
     , div
         [ class "col-sm-9 col-sm-offset-3 col-md-10 col-md-offset-2 main" ]
         [ bookmarkList address model.bookmarks model.currentCategory
