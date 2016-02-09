@@ -5,6 +5,7 @@ import Html.Events exposing (..)
 import Html.Attributes exposing (..)
 import StartApp.Simple as StartApp
 import Signal exposing (..)
+import String
 
 
 -- MODEL
@@ -31,11 +32,10 @@ type alias Model =
   , showCreateBookmark : Bool
   , showUpdateBookmark : Bool
   , maxId : Int
-  , newBookmarkURL : String
-  , newBookmarkTitle : String
   , updateBookmarkURL : String
   , updateBookmarkTitle : String
   , bookmarkIdBeingEdited : Maybe Int
+  , searchTerm : String
   }
 
 
@@ -69,11 +69,10 @@ initModel =
   , showCreateBookmark = False
   , showUpdateBookmark = False
   , maxId = 8
-  , newBookmarkURL = ""
-  , newBookmarkTitle = ""
   , updateBookmarkURL = ""
   , updateBookmarkTitle = ""
   , bookmarkIdBeingEdited = Nothing
+  , searchTerm = ""
   }
 
 
@@ -84,8 +83,6 @@ initModel =
 type Action
   = SelectCategory String
   | AddBookmark
-  | UpdateURL String
-  | UpdateTitle String
   | UpdateBookmark Int
   | DeleteBookmark Int
   | ToggleCreateBookmarkForm
@@ -94,6 +91,7 @@ type Action
   | EditTitle String
   | HideCreateForm
   | HideUpdateForm
+  | UpdateSearchTerm String
 
 
 update : Action -> Model -> Model
@@ -101,12 +99,6 @@ update action model =
   case action of
     SelectCategory categoryName ->
       { model | currentCategory = Just categoryName }
-
-    UpdateURL url ->
-      { model | newBookmarkURL = url }
-
-    UpdateTitle title ->
-      { model | newBookmarkTitle = title }
 
     EditUrl url ->
       { model | updateBookmarkURL = url }
@@ -121,8 +113,8 @@ update action model =
 
         newBookmark =
           { id = newMaxId
-          , title = model.newBookmarkTitle
-          , url = model.newBookmarkURL
+          , title = model.updateBookmarkTitle
+          , url = model.updateBookmarkURL
           , categoryName = Maybe.withDefault "" model.currentCategory
           }
 
@@ -132,8 +124,6 @@ update action model =
         { model
           | bookmarks = newBookmarks
           , maxId = newMaxId
-          , newBookmarkURL = ""
-          , newBookmarkTitle = ""
           , showCreateBookmark = False
         }
 
@@ -157,27 +147,13 @@ update action model =
         , bookmarkIdBeingEdited = Nothing
         }
 
-    {- -
-    AddBookmark partialBookmark ->
-      let
-        newId = model.maxId + 1
-        bookMark =
-          { id = newId
-          , title = partialBookmark.title
-          , url = partialBookmark.url
-          , categoryName = model.currentCategory
-          }
-        newBookmarks = bookMark :: model.bookmarks
-      in
-        { model |
-          bookmarks = newBookmarks
-        , maxId = newId
-        }
-    -
-    -}
-
     ToggleCreateBookmarkForm ->
-      { model | showCreateBookmark = True }
+      { model
+        | showCreateBookmark = True
+        , showUpdateBookmark = False
+        , updateBookmarkURL = ""
+        , updateBookmarkTitle = ""
+      }
 
     HideCreateForm ->
       { model | showCreateBookmark = False }
@@ -201,6 +177,7 @@ update action model =
             , updateBookmarkURL = bookmark.url
             , updateBookmarkTitle = bookmark.title
             , bookmarkIdBeingEdited = Just id
+            , showCreateBookmark = False
             }
           Nothing ->
             model
@@ -211,6 +188,9 @@ update action model =
           model.bookmarks |> List.filter (\bookmark -> bookmark.id /= id)
       in
         { model | bookmarks = newBookmarksList }
+
+    UpdateSearchTerm term ->
+      { model | searchTerm = term }
 
 
 
@@ -246,22 +226,28 @@ categoryRow address categoryName currentCategory =
     ]
 
 
-bookmarkList : Address Action -> List Bookmark -> Maybe String -> Html
-bookmarkList address bookmarks currentCategory =
+bookmarkList : Address Action -> Model -> Html
+bookmarkList address model =
   let
     currentCat =
-      Maybe.withDefault "" currentCategory
+      Maybe.withDefault "" model.currentCategory
 
-    predicate bookmark =
-      case currentCategory of
-        Nothing ->
-          True
+    searchFilter bookmark =
+      bookmark.title
+        |> String.toLower
+        |> String.contains (String.toLower model.searchTerm)
 
-        Just categoryName ->
-          bookmark.categoryName == categoryName
+    categoryFilter bookmark =
+      if currentCat == "" then
+        True
+      else
+        bookmark.categoryName == currentCat
 
     filteredBookmarks =
-      bookmarks |> List.filter predicate
+      model.bookmarks
+        |> List.filter categoryFilter
+        |> List.filter searchFilter
+
   in
     div
       []
@@ -296,6 +282,41 @@ showStyle =
   style
     [ ( "display", "block" ) ]
 
+bookmarkForm: Address Action -> Model  -> Html
+bookmarkForm address model =
+   div
+      [ class "create-form" ]
+      [ div
+          [ class "form-group" ]
+          [ label
+              [ for "updateBookmarkTitle" ]
+              [ text "Bookmark Title" ]
+          , input
+              [ class "form-control"
+              , id "updateBookmarkTitle"
+              , placeholder "Enter title"
+              , type' "text"
+              , value model.updateBookmarkTitle
+              , on "input" targetValue (Signal.message address << EditTitle)
+              ]
+              []
+          ]
+      , div
+          [ class "form-group" ]
+          [ label
+              [ for "updateBookmarkURL" ]
+              [ text "Bookmark URL" ]
+          , input
+              [ class "form-control"
+              , id "updateBookmarkURL"
+              , placeholder "Enter URL"
+              , type' "text"
+              , value model.updateBookmarkURL
+              , on "input" targetValue (Signal.message address << EditUrl)
+              ]
+              []
+          ]
+        ]
 
 createBookmarkForm : Address Action -> Model -> Html
 createBookmarkForm address model =
@@ -325,36 +346,7 @@ createBookmarkForm address model =
               , ( "create-form collapse", True )
               ]
           ]
-          [ div
-              [ class "form-group" ]
-              [ label
-                  [ for "newBookmarkTitle" ]
-                  [ text "Bookmark Title" ]
-              , input
-                  [ class "form-control"
-                  , id "newBookmarkTitle"
-                  , placeholder "Enter title"
-                  , type' "text"
-                  , value model.newBookmarkTitle
-                  , on "input" targetValue (Signal.message address << UpdateTitle)
-                  ]
-                  []
-              ]
-          , div
-              [ class "form-group" ]
-              [ label
-                  [ for "newBookmarkURL" ]
-                  [ text "Bookmark URL" ]
-              , input
-                  [ class "form-control"
-                  , id "newBookmarkURL"
-                  , placeholder "Enter URL"
-                  , type' "text"
-                  , value model.newBookmarkURL
-                  , on "input" targetValue (Signal.message address << UpdateURL)
-                  ]
-                  []
-              ]
+          [ bookmarkForm address model
           , button
               [ class "btn btn-info btn-lg"
               , type' "submit"
@@ -384,38 +376,7 @@ updateBookmarkForm address model =
       [ h1
           [ ]
           [ text "Update Bookmark" ]
-      , div
-          [ class "create-form" ]
-          [ div
-              [ class "form-group" ]
-              [ label
-                  [ for "updateBookmarkTitle" ]
-                  [ text "Bookmark Title" ]
-              , input
-                  [ class "form-control"
-                  , id "updateBookmarkTitle"
-                  , placeholder "Enter title"
-                  , type' "text"
-                  , value model.updateBookmarkTitle
-                  , on "input" targetValue (Signal.message address << EditTitle)
-                  ]
-                  []
-              ]
-          , div
-              [ class "form-group" ]
-              [ label
-                  [ for "updateBookmarkURL" ]
-                  [ text "Bookmark URL" ]
-              , input
-                  [ class "form-control"
-                  , id "updateBookmarkURL"
-                  , placeholder "Enter URL"
-                  , type' "text"
-                  , value model.updateBookmarkURL
-                  , on "input" targetValue (Signal.message address << EditUrl)
-                  ]
-                  []
-              ]
+      , bookmarkForm address model
           , button
               [ class "btn btn-info btn-lg"
               , type' "submit"
@@ -426,7 +387,22 @@ updateBookmarkForm address model =
               [ class "btn btn-default btn-lg pull-right", type' "button", onClick  address HideUpdateForm ]
               [ text "Cancel" ]
           ]
+
+
+searchBar : Address Action -> String -> Html
+searchBar address searchTerm =
+  div
+    []
+    [ input
+      [ class "form-control"
+      , id "searchTerm"
+      , placeholder "Filter Bookmarks"
+      , type' "text"
+      , value searchTerm
+      , on "input" targetValue (Signal.message address << UpdateSearchTerm)
       ]
+      []
+    ]
 
 view : Address Action -> Model -> Html
 view address model =
@@ -435,7 +411,8 @@ view address model =
     [ sidebar address model.categories model.currentCategory
     , div
         [ class "col-sm-9 col-sm-offset-3 col-md-10 col-md-offset-2 main" ]
-        [ bookmarkList address model.bookmarks model.currentCategory
+        [ searchBar address model.searchTerm
+        , bookmarkList address model
         , createBookmarkForm address model
         , updateBookmarkForm address model
         ]
